@@ -1,9 +1,10 @@
-PACKAGE=qt59
-$(package)_version=5.9.6
-$(package)_download_path=http://download.qt.io/official_releases/qt/5.9/$($(package)_version)/submodules
-$(package)_suffix=opensource-src-$($(package)_version).tar.xz
+PACKAGE=qt
+$(package)_version=5.12.2
+$(package)_download_path=http://download.qt.io/official_releases/qt/5.12/$($(package)_version)/submodules
+$(package)_suffix=everywhere-src-$($(package)_version).tar.xz
 $(package)_file_name=qtbase-$($(package)_suffix)
-$(package)_sha256_hash=eed620cb268b199bd83b3fc6a471c51d51e1dc2dbb5374fc97a0cc75facbe36f
+$(package)_sha256_hash=562c095a59c95f393762ec53bc05c0d80fad1758fd5ff7a5231967d1a98d56c1
+#$(package)_sha256_hash=d8660e189caa5da5142d5894d328b61a4d3ee9750b76d61ad74e4eee8765a969
 $(package)_dependencies=openssl zlib
 $(package)_linux_dependencies=freetype fontconfig libxcb libX11 xproto libXext
 $(package)_build_subdir=qtbase
@@ -11,20 +12,25 @@ $(package)_qt_libs=corelib network widgets gui plugins testlib concurrent xml
 $(package)_patches=0001-Fix-linguist-macro.patch mac-qmake.conf 0005-Make-sure-.pc-files-are-installed-correctly.patch 0008-Fix-linking-against-shared-static-libpng.patch 0011-Fix-linking-against-static-freetype2.patch 0012-Fix-linking-against-static-harfbuzz.patch 0001-Add-profile-for-cross-compilation-with-mingw-w64.patch 0030-Prevent-qmake-from-messing-static-lib-dependencies.patch 0021-Use-.dll.a-as-import-lib-extension.patch fix_qt_pkgconfig.patch 0013-Fix-linking-against-static-pcre.patch
 
 $(package)_qttranslations_file_name=qttranslations-$($(package)_suffix)
-$(package)_qttranslations_sha256_hash=9822084f8e2d2939ba39f4af4c0c2320e45d5996762a9423f833055607604ed8
+$(package)_qttranslations_sha256_hash=bbe47b3995be8528ee5e78eae263a5ec224cd18e588219191716a17802e60c7b
+#$(package)_qttranslations_sha256_hash=1f6d840e3d04b00b976bc1a86ea2be9d61051b7c3455dc2b891fae61772643fd
 
 $(package)_qttools_file_name=qttools-$($(package)_suffix)
-$(package)_qttools_sha256_hash=50e75417ec0c74bb8b1989d1d8e981ee83690dce7dfc0c2169f7c00f397e5117
+$(package)_qttools_sha256_hash=4aa3a089794ab1c629b666fffb5da4371351a9e85ea691d5d988c2ff63586005
+#$(package)_qttools_sha256_hash=f1ea441e5fe138756e6de3b60ab7d8d3051799eabe85a9408c995dfd4d048a53
 
 $(package)_qtcharts_file_name=qtcharts-$($(package)_suffix)
-$(package)_qtcharts_sha256_hash=5fd60f08b1815b0e7b813c75a0ec726bffc7cc686b160bebf1e710e882ceadab
+$(package)_qtcharts_sha256_hash=11d88d3e0ec86730219f7c2efa17f696ec8766415c488b208bfcb8f3c3a68a31
+#$(package)_qtcharts_sha256_hash=4f0d577bf73dd2bbb2765c2cfb493a2d68790fc2c64f42544d31dba806321ec9
 
 $(package)_qtactiveqt_file_name=qtactiveqt-$($(package)_suffix)
-$(package)_qtactiveqt_sha256_hash=ad2a041ab98a49b3c7f01fd293c375ab5b5f71bcc93c6b773544d7f08e8fbdf1
+$(package)_qtactiveqt_sha256_hash=281ec22e43c5e8385ed7da0ad7f317cf200bc6c2b72e6980e7c1c318635c636b
+#$(package)_qtactiveqt_sha256_hash=9021ab7e34b10b30a80d6f5e2474afa8faea10792867d459b53dd11ba23891e4
 $(package)_qtactiveqt_libs=axcontainer
 
 $(package)_qtsvg_file_name=qtsvg-$($(package)_suffix)
-$(package)_qtsvg_sha256_hash=4318ce3c1f94ca865e3405aefb927f257ca824c5adc482302f1449ed34dbd8b8
+$(package)_qtsvg_sha256_hash=ed9f2118a6d33f53e5d9ed18dcd36f252a4fbaf68382a1c4a663ba75b25ae7bd
+#$(package)_qtsvg_sha256_hash=00e00c04abcc8363cf7d94ca8b16af61840995a4af23685d49fa4ccafa1c7f5a
 
 $(package)_extra_sources  = $($(package)_qttranslations_file_name)
 $(package)_extra_sources += $($(package)_qttools_file_name)
@@ -54,7 +60,7 @@ $(package)_config_opts += -no-libudev
 $(package)_config_opts += -no-mtdev
 $(package)_config_opts += -no-openvg
 $(package)_config_opts += -no-reduce-relocations
-$(package)_config_opts += -no-qml-debug
+#$(package)_config_opts += -no-qml-debug
 $(package)_config_opts += -no-sql-db2
 $(package)_config_opts += -no-sql-ibase
 $(package)_config_opts += -no-sql-oci
@@ -92,7 +98,7 @@ $(package)_config_opts_darwin += -device-option MAC_TARGET=$(host)
 $(package)_config_opts_darwin += -device-option MAC_LD64_VERSION=$(LD64_VERSION)
 endif
 
-$(package)_config_opts_linux  = -qt-xkbcommon
+$(package)_config_opts_linux  = -xkbcommon
 $(package)_config_opts_linux += -qt-xcb
 $(package)_config_opts_linux += -system-freetype
 $(package)_config_opts_linux += -fontconfig
