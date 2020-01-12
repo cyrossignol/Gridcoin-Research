@@ -1681,6 +1681,7 @@ Superblock::ProjectStats::ProjectStats()
     , m_average_rac(0)
     , m_rac(0)
     , m_zcd(0)
+    , m_was()
     , m_convergence_hint(0)
 {
 }
@@ -1693,6 +1694,7 @@ Superblock::ProjectStats::ProjectStats(
     , m_average_rac(average_rac)
     , m_rac(rac)
     , m_zcd(0)
+    , m_was()
     , m_convergence_hint(0)
 {
 }
@@ -1702,6 +1704,7 @@ Superblock::ProjectStats::ProjectStats(uint64_t average_rac, uint64_t rac)
     , m_average_rac(average_rac)
     , m_rac(rac)
     , m_zcd(0)
+    , m_was()
     , m_convergence_hint(0)
 {
 }
@@ -1800,6 +1803,20 @@ void Superblock::ProjectIndex::SetHint(
     iter->second.m_convergence_hint = part_hash.GetUint64() >> 32;
 
     m_converged_by_project = true;
+}
+
+ProjectOnlySuperblock::ProjectOnlySuperblock(const Superblock& other)
+{
+    uint32_t m_version = other.m_version;
+
+    uint32_t m_convergence_hint = other.m_convergence_hint;
+    uint32_t m_manifest_content_hint = other.m_manifest_content_hint;
+
+    CpidIndex m_cpids; //!< Initialize empty.
+    ProjectIndex m_projects = other.m_projects;
+
+    int64_t m_height = other.m_height;
+    int64_t m_timestamp = other.m_timestamp;
 }
 
 // -----------------------------------------------------------------------------
@@ -2062,4 +2079,20 @@ ZeroCreditTally ZeroCreditTally::AdvanceByDelta(
 std::string ZeroCreditTally::ToString() const
 {
     return ZeroCreditBitset(m_packed).to_string('N', 'Y');
+}
+
+WorkAvailabilityTally::WorkAvailabilityTally()
+{
+}
+
+bool WorkAvailabilityTally::Greylisted() const
+{
+    // Stub.
+    return false;
+}
+
+WorkAvailabilityTally WorkAvailabilityTally::Advance() const
+{
+    // Stub.
+    return WorkAvailabilityTally();
 }

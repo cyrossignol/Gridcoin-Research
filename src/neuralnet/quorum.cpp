@@ -21,9 +21,15 @@ namespace {
 class SuperblockIndex
 {
     //!
-    //! \brief Number of superblocks to store in the active cache.
+    //! \brief Number of full superblocks to store in the active cache.
     //!
     static constexpr size_t CACHE_SIZE = 3;
+
+    //!
+    //! \brief Number of project only superblocks to store in the active cache.
+    //!
+    static constexpr size_t PROJECT_ONLY_CACHE_SIZE = 37;
+
 
 public:
     //!
@@ -102,10 +108,22 @@ public:
 
         for (auto iter = m_pending.begin() ; iter != pending_iter; ++iter) {
             if (m_cache.size() > CACHE_SIZE + 1) {
+
+                ProjectOnlySuperblock POSB_beginning(*m_cache.back());
+
+                ProjectOnlySuperblockPtr superblock_ptr = std::make_shared<const ProjectOnlySuperblock>(std::move(POSB_beginning));
+
+                m_projectonly_cache.emplace_front(superblock_ptr);
+
                 m_cache.pop_back();
             }
 
             m_cache.emplace_front(std::move(iter->second));
+
+            if (m_projectonly_cache.size() > PROJECT_ONLY_CACHE_SIZE + 1) {
+
+                m_projectonly_cache.pop_back();
+            }
         }
 
         m_pending.erase(m_pending.begin(), pending_iter);
@@ -170,10 +188,10 @@ public:
             }
         }
 
-        // TODO: for now, just load the last three superblocks. We'll build a
-        // better index when we implement superblock windows:
+        // TODO: for now, just load the last CACHE_SIZE + PROJECT_ONLY_CACHE_SIZE
+        // superblocks. We'll build a better index when we implement superblock windows:
         //
-        while (m_pending.size() < CACHE_SIZE) {
+        while (m_pending.size() < CACHE_SIZE + PROJECT_ONLY_CACHE_SIZE) {
             while (pindexLast->nIsSuperBlock != 1) {
                 if (!pindexLast->pprev) {
                     return;
@@ -208,6 +226,7 @@ private:
     //! TODO: refactor this for superblock windows.
     //!
     std::deque<SuperblockPtr> m_cache;
+    std::deque<ProjectOnlySuperblockPtr> m_projectonly_cache;
 }; // SuperblockIndex
 
 //!
@@ -680,7 +699,7 @@ GreylistSnapshot Quorum::FilterGreylist(WhitelistSnapshot projects)
     return g_greylist.Filter(std::move(projects));
 }
 
-GreylistReason Quorum::CheckGreylist(const std::string& project_name)
+GreylistReasons Quorum::CheckGreylist(const std::string& project_name)
 {
     return g_greylist.Check(project_name);
 }

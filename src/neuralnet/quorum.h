@@ -11,11 +11,13 @@ namespace NN {
 class Claim;
 class QuorumHash;
 class Superblock;
+class ProjectOnlySuperblock;
 
 //!
 //! \brief A received superblock stored in the quorum superblock index.
 //!
 typedef std::shared_ptr<const Superblock> SuperblockPtr;
+typedef std::shared_ptr<const ProjectOnlySuperblock> ProjectOnlySuperblockPtr;
 
 //!
 //! \brief Produces, stores, and validates superblocks.
@@ -188,6 +190,6 @@ public:
     //!
     //! \return A value that describes the greylist status of the project.
     //!
-    static GreylistReason CheckGreylist(const std::string& project_name);
+    static GreylistReasons CheckGreylist(const std::string& project_name);
 };
 }

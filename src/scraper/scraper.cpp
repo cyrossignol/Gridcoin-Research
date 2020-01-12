@@ -7,6 +7,7 @@
 #include "neuralnet/project.h"
 #include "neuralnet/quorum.h"
 #include "neuralnet/superblock.h"
+#include "neuralnet/greylist.h"
 
 #include <zlib.h>
 #include <boost/algorithm/string/classification.hpp>
@@ -122,6 +123,7 @@ unsigned int DeleteScraperFileManifestEntry(ScraperFileManifestEntry& entry);
 bool MarkScraperFileManifestEntryNonCurrent(ScraperFileManifestEntry& entry);
 void AlignScraperFileManifestEntries(const fs::path& file, const std::string& filetype, const std::string& sProject, const bool& excludefromcsmanifest);
 ScraperStats GetScraperStatsByConsensusBeaconList();
+unsigned int GetActiveProjectCountFromConvergedManifest(const ConvergedManifest& StructConvergedManifest);
 ScraperStats GetScraperStatsFromSingleManifest(CScraperManifest &manifest);
 bool LoadProjectFileToStatsByCPID(const std::string& project, const fs::path& file, const double& projectmag, const BeaconMap& mBeaconMap, ScraperStats& mScraperStats);
 bool LoadProjectObjectToStatsByCPID(const std::string& project, const CSerializeData& ProjectData, const double& projectmag, const BeaconMap& mBeaconMap, ScraperStats& mScraperStats);
@@ -2776,7 +2778,23 @@ bool LoadProjectObjectToStatsByCPID(const std::string& project, const CSerialize
 bool ProcessProjectStatsFromStreamByCPID(const std::string& project, boostio::filtering_istream& sUncompressedIn,
                                          const double& projectmag, const BeaconMap& mBeaconMap, ScraperStats& mScraperStats)
 {
-    std::vector<std::string> vXML;
+
+    // We need a temporary scraper stats map to hold the CPID entries and compute the statistics
+    // because if the project is greylisted, we will only commit some of these to the main scraper
+    // statistics map.
+    ScraperStats mScraperStatsTemp;
+
+    // Get the whitelist and greylist... this is primarily to determine greylisted projects to eliminate
+    // the CPID level statistics.
+
+    const NN::WhitelistSnapshot projectWhitelist = NN::GetWhitelist().Snapshot();
+
+    const NN::GreylistSnapshot greylist = NN::Quorum::FilterGreylist(projectWhitelist);
+
+    // If the specified project is not on the whitelist, immmediately return false.
+    if (!projectWhitelist.Contains(project)) return false;
+
+    bool greylisted = greylist.CheckGreylisted(project);
 
     // Lets vector the user blocks
     std::string line;
@@ -2811,18 +2829,16 @@ bool ProcessProjectStatsFromStreamByCPID(const std::string& project, boostio::fi
         statsentry.statskey.objectID = project + "," + cpid;
 
         // Insert stats entry into map by the key.
-        mScraperStats[statsentry.statskey] = statsentry;
+        mScraperStatsTemp[statsentry.statskey] = statsentry;
 
-        // Increment project
+        // Increment project RAC.
         dProjectRAC += statsentry.statsvalue.dRAC;
     }
 
     _log(logattribute::INFO, "LoadProjectObjectToStatsByCPID", "There are " + std::to_string(mScraperStats.size()) + " CPID entries for " + project);
 
     // The mScraperStats here is scoped to only this project so we do not need project filtering here.
-    ScraperStats::iterator entry;
-
-    for (auto const& entry : mScraperStats)
+    for (auto const& entry : mScraperStatsTemp)
     {
         ScraperObjectStats statsentry;
 
@@ -2835,31 +2851,48 @@ bool ProcessProjectStatsFromStreamByCPID(const std::string& project, boostio::fi
         statsentry.statsvalue.dMag = MagRound(entry.second.statsvalue.dRAC / dProjectRAC * projectmag);
 
         // Update map entry with the magnitude.
-        mScraperStats[statsentry.statskey] = statsentry;
+        mScraperStatsTemp[statsentry.statskey] = statsentry;
     }
 
     // Due to rounding to MAG_ROUND, the actual total project magnitude will not be exactly projectmag,
-    // but it should be very close. Roll up project statistics.
+    // but it should be very close. Roll up project statistics. If the project is greylisted, this will
+    // be zero
     ScraperObjectStats ProjectStatsEntry = {};
 
     ProjectStatsEntry.statskey.objecttype = statsobjecttype::byProject;
     ProjectStatsEntry.statskey.objectID = project;
 
     unsigned int nCPIDCount = 0;
-    for (auto const& entry : mScraperStats)
+    for (auto const& entry : mScraperStatsTemp)
     {
+        // This is incremented whether or not the project is greylisted to support the greylisting rules,
+        // which operate on Project TC.
         ProjectStatsEntry.statsvalue.dTC += entry.second.statsvalue.dTC;
-        ProjectStatsEntry.statsvalue.dRAT += entry.second.statsvalue.dRAT;
-        ProjectStatsEntry.statsvalue.dRAC += entry.second.statsvalue.dRAC;
-        ProjectStatsEntry.statsvalue.dMag += entry.second.statsvalue.dMag;
 
-        nCPIDCount++;
+        if (!greylisted)
+        {
+            ProjectStatsEntry.statsvalue.dRAT += entry.second.statsvalue.dRAT;
+            ProjectStatsEntry.statsvalue.dRAC += entry.second.statsvalue.dRAC;
+            ProjectStatsEntry.statsvalue.dMag += entry.second.statsvalue.dMag;
+
+            nCPIDCount++;
+        }
     }
 
-    //Compute AvgRAC for project across CPIDs and set.
+    //Compute AvgRAC for project across CPIDs and set. Note that if the project is greylisted, this will be zero.
     (nCPIDCount > 0) ? ProjectStatsEntry.statsvalue.dAvgRAC = ProjectStatsEntry.statsvalue.dRAC / nCPIDCount : ProjectStatsEntry.statsvalue.dAvgRAC = 0.0;
 
-    // Insert project level map entry.
+    // If the project is not greylisted, then insert CPID statistics from the temporary map to the main one.
+    if (!greylisted)
+    {
+        for (const auto& entry : mScraperStatsTemp)
+        {
+            mScraperStats[entry.first] = entry.second;
+        }
+    }
+
+    // Insert project level map entry. This is done whether the project is greylisted or not. Notice that all statistics except
+    // for project TC are zero if the project is greylisted.
     mScraperStats[ProjectStatsEntry.statskey] = ProjectStatsEntry;
 
     return true;
@@ -2943,16 +2976,30 @@ ScraperStats GetScraperStatsByConsensusBeaconList()
 
     // Enumerate the count of active projects from the file manifest. Since the manifest is
     // constructed starting with the whitelist, and then using only the current files, this
-    // will always be less than or equal to the whitelist count from whitelist.
+    // will always be less than or equal to the whitelist count from whitelist. Now that
+    // greylisting is implemented also check to see if the project is greylisted.
+
+    const NN::WhitelistSnapshot projectWhitelist = NN::GetWhitelist().Snapshot();
+
+    const NN::GreylistSnapshot greylist = NN::Quorum::FilterGreylist(projectWhitelist);
+
     unsigned int nActiveProjects = 0;
+
     {
         LOCK(cs_StructScraperFileManifest);
         if (fDebug3) _log(logattribute::INFO, "LOCK", "get scraper stats by consensus beacon list - count active projects: cs_StructScraperFileManifest");
 
         for (auto const& entry : StructScraperFileManifest.mScraperFileManifest)
         {
-            //
-            if (entry.second.current && !entry.second.excludefromcsmanifest) nActiveProjects++;
+            // This checks to see if the project file entry is contained in the whitelist (it should be) AND is it not greylisted (this is
+            // equivalent to checking the greylist active status) AND it is current
+            // AND is not excluded from CSManifest. The last is to handle explorer mode operation.
+            if (greylist.CheckActive(entry.first)
+                    && entry.second.current
+                    && !entry.second.excludefromcsmanifest)
+            {
+                ++nActiveProjects;
+            }
         }
 
         // End LOCK(cs_StructScraperFileManifest)
@@ -3001,14 +3048,38 @@ ScraperStats GetScraperStatsByConsensusBeaconList()
     return mScraperStats;
 }
 
+unsigned int GetActiveProjectCountFromConvergedManifest(const ConvergedManifest& StructConvergedManifest)
+{
+    unsigned int nActiveProjects = 0;
+
+    const NN::WhitelistSnapshot projectWhitelist = NN::GetWhitelist().Snapshot();
+
+    const NN::GreylistSnapshot greylist = NN::Quorum::FilterGreylist(projectWhitelist);
+
+    // Note we cannot just use greylist.ActiveProjects().size() here, because the Manifest may be missing a
+    // project that is on the whitelist due to lack of availability.
+    for (const auto& entry : StructConvergedManifest.ConvergedManifestPartsMap)
+    {
+        if (greylist.CheckActive(entry.first)) ++nActiveProjects;
+    }
+
+    return nActiveProjects;
+}
 
 ScraperStats GetScraperStatsByConvergedManifest(const ConvergedManifest& StructConvergedManifest)
 {
     _log(logattribute::INFO, "GetScraperStatsByConvergedManifest", "Beginning stats processing.");
 
+    // The simple way to count active projects is obsolete with implementation of greylisting.
+    // Please see above. TODO: Delete after review.
+    //
     // Enumerate the count of active projects from the converged manifest. One of the parts
     // is the beacon list, is not a project, which is why there is a -1.
-    unsigned int nActiveProjects = StructConvergedManifest.ConvergedManifestPartsMap.size() - 1;
+
+    // unsigned int nActiveProjects = StructConvergedManifest.ConvergedManifestPartsMap.size() - 1;
+
+    unsigned int nActiveProjects = GetActiveProjectCountFromConvergedManifest(StructConvergedManifest);
+
     _log(logattribute::INFO, "GetScraperStatsByConvergedManifest", "Number of active projects in converged manifest = " + std::to_string(nActiveProjects));
 
     double dMagnitudePerProject = NEURALNETWORKMULTIPLIER / nActiveProjects;
@@ -3109,9 +3180,16 @@ ScraperStats GetScraperStatsFromSingleManifest(CScraperManifest& manifest)
         StructDummyConvergedManifest.nContentHash = Hash(ss2.begin(), ss2.end());
     }
 
+    // The simple way to count active projects is obsolete with implementation of greylisting.
+    // Please see above. TODO: Delete after review.
+    //
     // Enumerate the count of active projects from the dummy converged manifest. One of the parts
     // is the beacon list, is not a project, which is why there is a -1.
-    unsigned int nActiveProjects = StructDummyConvergedManifest.ConvergedManifestPartsMap.size() - 1;
+
+    // unsigned int nActiveProjects = StructDummyConvergedManifest.ConvergedManifestPartsMap.size() - 1;
+
+    unsigned int nActiveProjects = GetActiveProjectCountFromConvergedManifest(StructDummyConvergedManifest);
+
     _log(logattribute::INFO, "GetScraperStatsFromSingleManifest", "Number of active projects in converged manifest = " + std::to_string(nActiveProjects));
 
     double dMagnitudePerProject = NEURALNETWORKMULTIPLIER / nActiveProjects;

@@ -226,8 +226,10 @@ private:
 }; // QuorumHash
 
 //!
-//! \brief Stores the number recent of zero credit days for a BOINC project.
-//! Used for automated project greylisting.
+//! \brief Stores the number recent of zero credit SB 'days' for a BOINC
+//! project. Used for automated project greylisting. Note that SB's are used
+//! rather than true days, but for our purposes are close enough. A SB cycle
+//! is normally about 25 hours.
 //!
 class ZeroCreditTally
 {
@@ -258,9 +260,9 @@ public:
     ZeroCreditTally(uint32_t zcd_packed);
 
     //!
-    //! \brief Count the number of zero-credit days present in the tally.
+    //! \brief Count the number of zero-credit SB's present in the tally.
     //!
-    //! \return The number of recent days that a project produced no credit.
+    //! \return The number of recent SB's that a project produced no credit.
     //!
     size_t Count() const;
 
@@ -271,24 +273,24 @@ public:
     bool Greylisted() const;
 
     //!
-    //! \brief Shift the tally by one day and append the status of the latest
-    //! day. The earliest day is dropped from the history.
+    //! \brief Shift the tally by one SB and append the status of the latest
+    //! SB. The earliest SB is dropped from the history.
     //!
-    //! \brief is_zero_credit If true, set the latest day to a zero-credit day.
+    //! \brief is_zero_credit If true, set the latest SB to a zero-credit SB.
     //!
-    //! \return A copy of the tally adjusted for the latest day.
+    //! \return A copy of the tally adjusted for the latest SB.
     //!
     ZeroCreditTally Advance(const bool is_zero_credit) const;
 
     //!
-    //! \brief Shift the tally by one day and append the status of the latest
-    //! day by calculating the difference in project credit. The earliest day
+    //! \brief Shift the tally by one SB and append the status of the latest
+    //! day by calculating the difference in project credit. The earliest SB
     //! is dropped from the history.
     //!
-    //! \param previous_credit Project credit preceeding the latest day.
-    //! \param current_credit  Project credit on the latest day.
+    //! \param previous_credit Project credit preceeding the latest SB.
+    //! \param current_credit  Project credit on the latest SB.
     //!
-    //! \return A copy of the tally adjusted for the latest day.
+    //! \return A copy of the tally adjusted for the latest SB.
     //!
     ZeroCreditTally AdvanceByDelta(
         const uint64_t previous_credit,
@@ -297,8 +299,8 @@ public:
     //!
     //! \brief Get the string representation of the tally.
     //!
-    //! \return 32 characters where 'Y' represents a zero-credit day, and 'N'
-    //! represents a non-zero-credit day. Ordered from earliest to latest.
+    //! \return 32 characters where 'Y' represents a zero-credit SB, and 'N'
+    //! represents a non-zero-credit SB. Ordered from earliest to latest.
     //!
     std::string ToString() const;
 
@@ -323,6 +325,72 @@ private:
     //!
     uint32_t m_packed;
 }; // ZeroCreditTally
+
+
+
+
+//!
+//! \brief Stores the Work Availaiblity Score for a BOINC project.
+//! Used for automated project greylisting.
+//!
+class WorkAvailabilityTally
+{
+public:
+    //!
+    //! \brief The minimum availability ratio to avoid being greylisted.
+    //!
+    static constexpr double WAS_LOW_LIMIT = 0.1;
+
+    //!
+    //! \brief The number of days to tally TC as a long term baseline.
+    //!
+    static constexpr size_t WAS_BASELINE = 40;
+
+    //!
+    //! \brief The number of days to tally TC to compare to the long term baseline
+    //! to generate the Work Availability Score (WAS).
+    //!
+    static constexpr size_t WAS_AVAILABILITY = 7;
+
+    //!
+    //! \brief Initialize an empty tally.
+    //!
+    WorkAvailabilityTally();
+
+    //!
+    //! \brief Determine whether a project triggered the WAS rule
+    //! for automated greylisting.
+    //!
+    bool Greylisted() const;
+
+    //!
+    //! \brief Shift the tally by one SB and append the status of the latest
+    //! day. The earliest SB is dropped from the history.
+    //!
+    //! \return A copy of the tally adjusted for the latest SB.
+    //!
+    WorkAvailabilityTally Advance() const;
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
+        READWRITE(m_was);
+    }
+
+private:
+    //!
+    //! \brief Work Availability Score Represented as a double.
+    //!
+    //! This is the WAS_AVAILABILITY average project TC / the WAS_BASELINE
+    //! average projec TC expressed as a double. The minimum value to avoid
+    //! greylisting is WAS_LOW_LIMIT.
+    //!
+    double m_was;
+}; // WorkAvailabilityTally
+
+
 
 //!
 //! \brief A snapshot of BOINC statistics used to calculate and verify research
@@ -624,10 +692,11 @@ public:
         //!
         ProjectStats(uint64_t average_rac, uint64_t rac);
 
-        uint64_t m_total_credit; //!< All-time credit produced by the project.
-        uint64_t m_average_rac;  //!< Average project recent average credit.
-        uint64_t m_rac;          //!< Sum of the RAC of all the project CPIDs.
-        ZeroCreditTally m_zcd;   //!< Tracks zero-credit days for greylistiing.
+        uint64_t m_total_credit;    //!< All-time credit produced by the project.
+        uint64_t m_average_rac;     //!< Average project recent average credit.
+        uint64_t m_rac;             //!< Sum of the RAC of all the project CPIDs.
+        ZeroCreditTally m_zcd;      //!< Tracks zero-credit days for greylisting.
+        WorkAvailabilityTally m_was; //!< Tracks Work Availability Score for greylisting.
 
         //!
         //! \brief A truncated hash of the converged manifest part that forms
@@ -669,6 +738,7 @@ public:
             READWRITE(VARINT(m_average_rac));
             READWRITE(VARINT(m_rac));
             READWRITE(m_zcd);
+            READWRITE(m_was);
 
             // ProjectIndex handles serialization of m_convergence_hint
             // when creating superblocks from fallback-to-project-level
@@ -1010,6 +1080,15 @@ private:
     //!
     mutable QuorumHash m_hash_cache;
 }; // Superblock
+
+
+class ProjectOnlySuperblock : Superblock
+{
+
+public:
+    ProjectOnlySuperblock(const Superblock& other);
+
+};
 
 
 //!
