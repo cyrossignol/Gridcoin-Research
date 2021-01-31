@@ -8,10 +8,11 @@ namespace NN {
 //!
 enum class GreylistReason
 {
-    NONE,              //!< Project is not greylisted.
     WORK_AVAILABILITY, //!< Failed to supply a reasonable quantity of work.
     ZERO_CREDIT_DAYS,  //!< Exported too many recent zero-credit days.
 };
+
+typedef std::vector<GreylistReason> GreylistReasons; //!< There can be more than one reason.
 
 //!
 //! \brief Associates a project on the Gridcoin whitelist with a reason for
@@ -21,7 +22,7 @@ class GreylistProject
 {
 public:
     const Project* const m_project; //!< Refers to the greylisted project.
-    const GreylistReason m_reason;  //!< Describes why a project is greylisted.
+    const GreylistReasons m_reasons;  //!< Describes why a project is greylisted.
 
     //!
     //! \brief Initialize a new greylisted project context.
@@ -29,9 +30,9 @@ public:
     //! \param project Refers to the greylisted project.
     //! \param reason  Describes why a project is greylisted.
     //!
-    GreylistProject(const Project* const project, const GreylistReason reason)
+    GreylistProject(const Project* const project, const GreylistReasons reasons)
         : m_project(project)
-        , m_reason(reason)
+        , m_reasons(reasons)
     {
     }
 
@@ -115,15 +116,17 @@ public:
     //!
     //! \return A value that describes the greylist status of the project.
     //!
-    GreylistReason Check(const std::string& project_name) const
+    GreylistReasons Check(const std::string& project_name) const
     {
+        GreylistReasons reasons;
+
         for (const auto& project : m_greylisted_projects) {
             if (project->m_name == project_name) {
-                return project.m_reason;
+                return project.m_reasons;
             }
         }
 
-        return GreylistReason::NONE;
+        return reasons;
     }
 
     //!
@@ -136,7 +139,9 @@ public:
     //!
     bool CheckActive(const std::string& project_name) const
     {
-        return Check(project_name) == GreylistReason::NONE;
+        GreylistReasons reasons = Check(project_name);
+
+        return !reasons.empty();
     }
 
     //!
@@ -148,7 +153,9 @@ public:
     //!
     bool CheckGreylisted(const std::string& project_name) const
     {
-        return Check(project_name) != GreylistReason::NONE;
+        GreylistReasons reasons = Check(project_name);
+
+        return reasons.empty();
     }
 
 private:
@@ -210,7 +217,7 @@ public:
     //!
     //! \return A value that describes the greylist status of the project.
     //!
-    GreylistReason Check(const Project& project);
+    GreylistReasons Check(const Project& project);
 
     //!
     //! \brief Determine whether the specified project triggered an automated
@@ -220,6 +227,6 @@ public:
     //!
     //! \return A value that describes the greylist status of the project.
     //!
-    GreylistReason Check(const std::string& project_name);
+    GreylistReasons Check(const std::string& project_name);
 };
 }

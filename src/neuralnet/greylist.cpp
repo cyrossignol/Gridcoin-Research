@@ -8,12 +8,12 @@ GreylistSnapshot Greylist::Filter(WhitelistSnapshot projects)
     GreylistSnapshot::GreylistedProjectSet greylisted_projects;
 
     for (const auto& project : projects) {
-        const GreylistReason reason = Check(project);
+        const GreylistReasons reasons = Check(project);
 
-        if (reason == GreylistReason::NONE) {
+        if (reasons.empty()) {
             active_projects.emplace_back(&project);
         } else {
-            greylisted_projects.emplace_back(&project, reason);
+            greylisted_projects.emplace_back(&project, reasons);
         }
     }
 
@@ -23,13 +23,17 @@ GreylistSnapshot Greylist::Filter(WhitelistSnapshot projects)
         std::move(greylisted_projects));
 }
 
-GreylistReason Greylist::Check(const Project& project)
+GreylistReasons Greylist::Check(const Project& project)
 {
     return Check(project.m_name);
 }
 
-GreylistReason Greylist::Check(const std::string& project_name)
+GreylistReasons Greylist::Check(const std::string& project_name)
 {
     // TODO: implement greylist rules
-    return GreylistReason::NONE;
+
+    GreylistReasons reasons;
+
+    // Stub... return empty vector.
+    return reasons;
 }

@@ -1,4 +1,5 @@
 #include "project.h"
+#include "quorum.h"
 
 #include <algorithm>
 #include <atomic>
