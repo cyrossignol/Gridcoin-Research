@@ -91,8 +91,6 @@ extern bool fLogTimestamps;
 extern bool fReopenDebugLog;
 extern bool fDevbuildCripple;
 
-extern std::atomic_bool miner_first_pass_complete;
-
 void RandAddSeed();
 void RandAddSeedPerfmon();
 
