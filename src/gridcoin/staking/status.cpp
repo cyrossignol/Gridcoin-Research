@@ -4,9 +4,11 @@
 
 #include "gridcoin/staking/kernel.h"
 #include "gridcoin/staking/status.h"
+#include "gridcoin/staking/difficulty.h"
 #include "ui_interface.h"
 #include "util.h"
 #include "wallet/wallet.h"
+#include "qt/guiconstants.h"
 
 using namespace GRC;
 using SearchReport = MinerStatus::SearchReport;
@@ -17,6 +19,7 @@ using EfficiencyReport = MinerStatus::EfficiencyReport;
 // -----------------------------------------------------------------------------
 
 MinerStatus g_miner_status;
+BlockChainStatus g_blockchain_status;
 
 // -----------------------------------------------------------------------------
 // Class: MinerStatus
@@ -190,10 +193,11 @@ void MinerStatus::UpdateLastSearch(
     // search_timestamp has already been granularized to the stake time mask.
     // The StakeMiner loop has a sleep of 8 seconds. You can have no more than
     // one successful stake in STAKE_TIMESTAMP_MASK, so only increment the
-    // counter if this iteration is with an nTime in the next mask interval.
-    // (When the UTXO count is low, with a sleep of 8 seconds, and a nominal
-    // mask of 16 seconds, many times two stake UTXO loop traversals will occur
-    // during the 16 seconds. Only one will result in a possible stake.)
+    // counter if this iteration is with a search_timestamp in the next mask
+    // interval. (When the UTXO count is low, with a sleep of 8 seconds, and a
+    // nominal mask of 16 seconds, many times two stake UTXO loop traversals
+    // will occur during the 16 seconds. Only one will result in a possible
+    // stake.)
     //
     if (search_timestamp > m_search.m_timestamp) {
         m_efficiency.UpdateMetrics(weight_sum, balance_weight);
@@ -311,4 +315,111 @@ void EfficiencyReport::UpdateMetrics(uint64_t weight_sum, int64_t balance_weight
     //
     // actual_cumulative_weight / ideal_cumulative_weight provides a measure of
     // the overall mining efficiency compared to ideal.
+}
+
+// -----------------------------------------------------------------------------
+// Class: BlockChainStatus
+// -----------------------------------------------------------------------------
+
+BlockChainStatus::BlockChainStatus()
+    : m_last_update_ms(0)
+    , m_cached_num_blocks(-1)
+    , m_cached_num_blocks_of_peers(-1)
+    , m_cached_best_block_time(-1)
+    , m_cached_difficulty(-1)
+    , m_cached_net_weight(-1)
+    , m_cached_etts_days(0)
+{
+// Nothing to do.
+}
+
+void BlockChainStatus::UpdateBlockChainStatus(int height, int64_t best_time)
+{
+    int64_t now = GetTimeMillis();
+
+    // Here we use the model update delay interval for the caching update interval, because it makes sense to align them.
+    if (now - m_last_update_ms < MODEL_UPDATE_DELAY) return;
+
+    m_cached_num_blocks = height;
+    m_cached_best_block_time = best_time;
+
+    {
+        // This should normally be called when cs_main is already held, in which case this is going to succeed.
+        // If called from other thread where cs_main isn't held by the caller, and cs_main is held by another thread,
+        // then this will not block but simply return immediately with nothing done.
+        //
+        // The normal update from this from the core side is a call in the GridcoinServices() function in main.cpp.
+        TRY_LOCK(cs_main, lockMain);
+
+        if (lockMain) {
+            m_cached_num_blocks_of_peers = ::GetNumBlocksOfPeers();
+            m_cached_difficulty = GRC::GetCurrentDifficulty();
+            m_cached_net_weight = GRC::GetEstimatedNetworkWeight() / 80.0;
+            m_cached_etts_days = GRC::GetEstimatedTimetoStake();
+        }
+    }
+
+    // This is a bit slippery. The last update is changed EVEN IF the try lock fails, because the two most important fields,
+    // m_cached_num_blocks and m_cached_best_block_time, are arguments fed in, and ARE updated, regardless of the success
+    // of the try lock.
+    m_last_update_ms = now;
+}
+
+int BlockChainStatus::GetNumBlocks() const
+{
+    if (m_cached_num_blocks == -1) {
+        LOCK(cs_main);
+        m_cached_num_blocks = nBestHeight;
+    }
+
+    return m_cached_num_blocks;
+}
+
+int64_t BlockChainStatus::GetLastBlockDate() const
+{
+    if (m_cached_best_block_time == -1) {
+        LOCK(cs_main);
+        m_cached_best_block_time = pindexBest->GetBlockTime();
+    }
+
+    return m_cached_best_block_time;
+}
+int BlockChainStatus::GetNumBlocksOfPeers() const
+{
+    if (m_cached_num_blocks_of_peers == -1) {
+        // cs_main lock is taken by ::GetNumBlocksOfPeers() so not necessary to take before.
+        m_cached_num_blocks_of_peers = ::GetNumBlocksOfPeers();
+    }
+
+    return m_cached_num_blocks_of_peers;
+}
+
+double BlockChainStatus::GetDifficulty() const
+{
+    if (m_cached_difficulty == -1) {
+        LOCK(cs_main);
+        m_cached_difficulty = GRC::GetCurrentDifficulty();
+    }
+
+    return m_cached_difficulty;
+}
+
+double BlockChainStatus::GetNetWeight() const
+{
+    if (m_cached_net_weight == -1) {
+        LOCK(cs_main);
+        m_cached_net_weight = GRC::GetEstimatedNetworkWeight() / 80.0;
+    }
+
+    return m_cached_net_weight;
+}
+
+double BlockChainStatus::GetEstimatedTimetoStake() const
+{
+    if (m_cached_etts_days == -1) {
+        LOCK(cs_main);
+        m_cached_etts_days = GRC::GetEstimatedTimetoStake();
+    }
+
+    return m_cached_etts_days;
 }

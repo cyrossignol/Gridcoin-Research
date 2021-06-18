@@ -27,12 +27,6 @@ ClientModel::ClientModel(OptionsModel *optionsModel, QObject *parent)
     , optionsModel(optionsModel)
     , peerTableModel(nullptr)
     , banTableModel(nullptr)
-    , m_cached_num_blocks(-1)
-    , m_cached_num_blocks_of_peers(-1)
-    , m_cached_best_block_time(-1)
-    , m_cached_difficulty(-1)
-    , m_cached_net_weight(-1)
-    , m_cached_etts_days(0)
     , pollTimer(nullptr)
 {
     peerTableModel = new PeerTableModel(this);
@@ -58,41 +52,22 @@ int ClientModel::getNumConnections() const
 
 int ClientModel::getNumBlocks() const
 {
-    if (m_cached_num_blocks == -1) {
-        LOCK(cs_main);
-        m_cached_num_blocks = nBestHeight;
-    }
-
-    return m_cached_num_blocks;
+    return g_blockchain_status.GetNumBlocks();
 }
 
 int ClientModel::getNumBlocksOfPeers() const
 {
-    if (m_cached_num_blocks_of_peers == -1) {
-        m_cached_num_blocks_of_peers = GetNumBlocksOfPeers();
-    }
-
-    return m_cached_num_blocks_of_peers;
+    return g_blockchain_status.GetNumBlocksOfPeers();
 }
 
 double ClientModel::getDifficulty() const
 {
-    if (m_cached_difficulty == -1) {
-        LOCK(cs_main);
-        m_cached_difficulty = GRC::GetCurrentDifficulty();
-    }
-
-    return m_cached_difficulty;
+    return g_blockchain_status.GetDifficulty();
 }
 
 double ClientModel::getNetWeight() const
 {
-    if (m_cached_net_weight == -1) {
-        LOCK(cs_main);
-        m_cached_net_weight = GRC::GetEstimatedNetworkWeight() / 80.0;
-    }
-
-    return m_cached_net_weight;
+    return g_blockchain_status.GetNetWeight();
 }
 
 quint64 ClientModel::getTotalBytesRecv() const
@@ -107,17 +82,7 @@ quint64 ClientModel::getTotalBytesSent() const
 
 QDateTime ClientModel::getLastBlockDate() const
 {
-    if (m_cached_best_block_time != -1) {
-        return QDateTime::fromTime_t(m_cached_best_block_time);
-    }
-
-    LOCK(cs_main);
-
-    if (pindexBest) {
-        return QDateTime::fromTime_t(pindexBest->GetBlockTime());
-    }
-
-    return QDateTime::fromTime_t(1393221600); // Genesis block's time
+    return QDateTime::fromTime_t(g_blockchain_status.GetLastBlockDate());
 }
 
 void ClientModel::updateTimer()
@@ -130,21 +95,10 @@ void ClientModel::updateTimer()
 
 void ClientModel::updateNumBlocks(int height, int64_t best_time)
 {
-    m_cached_num_blocks = height;
-    m_cached_best_block_time = best_time;
+    // This call is probably superfluous.
+    g_blockchain_status.UpdateBlockChainStatus(height, best_time);
 
-    {
-        TRY_LOCK(cs_main, lockMain);
-
-        if (lockMain) {
-            m_cached_num_blocks_of_peers = GetNumBlocksOfPeers();
-            m_cached_difficulty = GRC::GetCurrentDifficulty();
-            m_cached_net_weight = GRC::GetEstimatedNetworkWeight() / 80.0;
-
-            emit difficultyChanged(getDifficulty());
-        }
-    }
-
+    emit difficultyChanged(getDifficulty());
     emit numBlocksChanged(getNumBlocks(), getNumBlocksOfPeers());
 }
 
@@ -174,15 +128,7 @@ void ClientModel::updateAlert(const QString &hash, int status)
 
 void ClientModel::updateMinerStatus(bool staking, double coin_weight)
 {
-    if (staking) {
-        TRY_LOCK(cs_main, lockMain);
-
-        if (lockMain) {
-            m_cached_etts_days = GRC::GetEstimatedTimetoStake();
-        }
-    }
-
-    emit minerStatusChanged(staking, getNetWeight(), coin_weight, m_cached_etts_days);
+    emit minerStatusChanged(staking, getNetWeight(), coin_weight, g_blockchain_status.GetEstimatedTimetoStake());
 }
 
 void ClientModel::updateScraper(int scraperEventtype, int status, const QString message)
@@ -293,6 +239,9 @@ static void NotifyBlocksChanged(
     // Avoid spamming update events during the initial block download. A node
     // can trigger this signal hundreds of times per second.
     //
+
+    // TODO: Not sure if this is necessary anymore with my other changes... probably doesn't hurt though to lower
+    // the number of signals processed that would be trivial calls to g_miner_status and g_blockchain_status - JCO.
     if (syncing) {
         static int64_t last_update_ms = 0; // Thread synchronization not needed.
         const int64_t now = GetTimeMillis();

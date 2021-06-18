@@ -9,7 +9,9 @@
 
 #include <atomic>
 #include <string>
+#include <optional>
 
+class CWallet;
 class CWalletTx;
 
 namespace GRC {
@@ -270,6 +272,35 @@ private:
     //!
     EfficiencyReport m_efficiency;
 }; // MinerStatus
+
+class BlockChainStatus
+{
+public:
+    BlockChainStatus();
+
+    void UpdateBlockChainStatus(int height, int64_t best_time);
+
+    int GetNumBlocks() const;
+    int64_t GetLastBlockDate() const;
+    //! Return conservative estimate of total number of blocks, or 0 if unknown
+    int GetNumBlocksOfPeers() const;
+    //! Return the difficulty of the block at the chain tip.
+    double GetDifficulty() const;
+    //! Return estimated network staking weight from the average of recent blocks.
+    double GetNetWeight() const;
+    //! Return warnings to be displayed in status bar
+    double GetEstimatedTimetoStake() const;
+
+private:
+    mutable std::atomic<int64_t> m_last_update_ms;
+    mutable std::atomic<int> m_cached_num_blocks;
+    mutable std::atomic<int> m_cached_num_blocks_of_peers;
+    mutable std::atomic<int64_t> m_cached_best_block_time;
+    mutable std::atomic<double> m_cached_difficulty;
+    mutable std::atomic<double> m_cached_net_weight;
+    mutable std::atomic<double> m_cached_etts_days;
+};
 } // namespace GRC
 
 extern GRC::MinerStatus g_miner_status;
+extern GRC::BlockChainStatus g_blockchain_status;

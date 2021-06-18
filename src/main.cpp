@@ -134,6 +134,9 @@ bool fUseFastIndex = false;
 // Temporary block version 11 transition helpers:
 int64_t g_v11_timestamp = 0;
 
+// Blockchain status object.
+extern GRC::BlockChainStatus g_blockchain_status;
+
 // End of Gridcoin Global vars
 
 namespace {
@@ -2382,6 +2385,10 @@ bool GridcoinServices()
         }
     }
     */
+
+    // This is fine to call each invocation of GridcoinServices. It is internally caching, and will
+    // only actually update at MODEL_UPDATE_DELAY intervals.
+    g_blockchain_status.UpdateBlockChainStatus(pindexBest->nHeight, pindexBest->GetBlockTime());
 
     return true;
 }

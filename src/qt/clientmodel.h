@@ -66,13 +66,6 @@ private:
     PeerTableModel *peerTableModel;
     BanTableModel *banTableModel;
 
-    mutable std::atomic<int> m_cached_num_blocks;
-    mutable std::atomic<int> m_cached_num_blocks_of_peers;
-    mutable std::atomic<int64_t> m_cached_best_block_time;
-    mutable std::atomic<double> m_cached_difficulty;
-    mutable std::atomic<double> m_cached_net_weight;
-    mutable std::atomic<double> m_cached_etts_days;
-
     QTimer *pollTimer;
 
     void subscribeToCoreSignals();
